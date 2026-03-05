@@ -22,6 +22,7 @@ void main() async {
     MultiProvider(
       providers: [
         // Services
+        Provider<StorageService>.value(value: storageService),
         Provider<ThermalPrinterService>.value(value: thermalPrinterService),
 
         // Providers

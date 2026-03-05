@@ -6,7 +6,7 @@ This guide explains how the background print service works and what you need to 
 
 ## How It Works
 
-The app runs a **foreground service** on Android that keeps a persistent Socket.IO connection to your POS backend. When a print job arrives, the service connects to the mapped Bluetooth/USB printer and prints automatically — even if the app UI is closed or the screen is off.
+The app runs a **foreground service** on Android that keeps a persistent Socket.IO connection to your POS backend. When a print job arrives, the service connects to the mapped Bluetooth/USB printer and    prints automatically — even if the app UI is closed or the screen is off.
 
 You'll see a small **persistent notification** in your notification bar showing the current connection status.
 

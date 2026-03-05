@@ -3,6 +3,7 @@ import 'package:flutter_thermal_printer/utils/printer.dart';
 import 'package:provider/provider.dart';
 import '../../core/providers/printer_provider.dart';
 import '../../data/models/printer_model.dart';
+import '../../data/services/storage_service.dart';
 
 class AddPrinterDialog extends StatefulWidget {
   final PrinterModel? existingPrinter;
@@ -20,7 +21,7 @@ class _AddPrinterDialogState extends State<AddPrinterDialog> {
   Printer? _selectedDevice;
   bool _isEditing = false;
 
-  final List<String> _areas = ['kitchen', 'cashier', 'bar'];
+  List<String> _areas = ['kitchen', 'cashier'];
 
   @override
   void initState() {
@@ -29,9 +30,21 @@ class _AddPrinterDialogState extends State<AddPrinterDialog> {
     _nameController = TextEditingController(
       text: widget.existingPrinter?.name ?? '',
     );
+
+    // Load print areas from settings
+    final storage = context.read<StorageService>();
+    final savedAreas = storage.printAreas;
+    if (savedAreas.isNotEmpty) {
+      _areas = List<String>.from(savedAreas);
+    }
+
     if (_isEditing) {
       _printArea = widget.existingPrinter!.printArea;
       _connectionType = widget.existingPrinter!.connectionType;
+      // Ensure the existing printer's area is in the list
+      if (!_areas.contains(_printArea)) {
+        _areas.add(_printArea);
+      }
     }
   }
 

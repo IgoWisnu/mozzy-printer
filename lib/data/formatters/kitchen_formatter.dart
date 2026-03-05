@@ -11,7 +11,7 @@ class KitchenFormatter {
 
     // Header
     bytes += generator.text(
-      '-- KITCHEN --',
+      '-- ${payload.printArea.toUpperCase()} --',
       styles: const PosStyles(
         align: PosAlign.center,
         bold: true,
@@ -78,15 +78,15 @@ class KitchenFormatter {
       bytes += generator.text(
         '${qtyStr}x ${item.name}',
         styles: const PosStyles(
-          bold: true,
-          height: PosTextSize.size2,
+          bold: false,
+          height: PosTextSize.size1,
           width: PosTextSize.size1,
         ),
       );
       if (item.note != null && item.note!.isNotEmpty) {
         bytes += generator.text(
-          '   >> ${item.note}',
-          styles: const PosStyles(bold: true, height: PosTextSize.size1),
+          '   - ${item.note}',
+          styles: const PosStyles(bold: false, height: PosTextSize.size1),
         );
       }
     }

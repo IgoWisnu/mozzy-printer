@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_thermal_printer/utils/printer.dart';
 import 'package:uuid/uuid.dart';
@@ -53,7 +54,7 @@ class PrinterProvider extends ChangeNotifier {
     );
     _printers.add(printer);
     await _storage.savePrinters(_printers);
-    FlutterBackgroundService().invoke('update-settings');
+    _notifyBackgroundPrinters();
     notifyListeners();
   }
 
@@ -62,7 +63,7 @@ class PrinterProvider extends ChangeNotifier {
     if (idx != -1) {
       _printers[idx] = updated;
       await _storage.savePrinters(_printers);
-      FlutterBackgroundService().invoke('update-settings');
+      _notifyBackgroundPrinters();
       notifyListeners();
     }
   }
@@ -70,8 +71,15 @@ class PrinterProvider extends ChangeNotifier {
   Future<void> deletePrinter(String id) async {
     _printers.removeWhere((p) => p.id == id);
     await _storage.savePrinters(_printers);
-    FlutterBackgroundService().invoke('update-settings');
+    _notifyBackgroundPrinters();
     notifyListeners();
+  }
+
+  void _notifyBackgroundPrinters() {
+    final printersJson = jsonEncode(_printers.map((e) => e.toJson()).toList());
+    FlutterBackgroundService().invoke('update-printers', {
+      'printers': printersJson,
+    });
   }
 
   // ─── Scanning ───────────────────────────────────────────

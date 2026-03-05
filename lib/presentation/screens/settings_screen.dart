@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../core/providers/socket_provider.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import '../../data/services/storage_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -13,6 +13,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _serverUrlController;
   late TextEditingController _apiKeyController;
+  late TextEditingController _customAreaController;
   bool _obscureApiKey = true;
   List<String> _selectedAreas = [];
   final List<String> _availableAreas = ['kitchen', 'cashier', 'bar'];
@@ -23,6 +24,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final storage = context.read<StorageService>();
     _serverUrlController = TextEditingController(text: storage.serverUrl);
     _apiKeyController = TextEditingController(text: storage.apiKey);
+    _customAreaController = TextEditingController();
     _selectedAreas = List.from(storage.printAreas);
   }
 
@@ -30,7 +32,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     _serverUrlController.dispose();
     _apiKeyController.dispose();
+    _customAreaController.dispose();
     super.dispose();
+  }
+
+  void _addCustomArea() {
+    final val = _customAreaController.text.trim().toLowerCase();
+    if (val.isNotEmpty && !_selectedAreas.contains(val)) {
+      setState(() {
+        if (!_availableAreas.contains(val)) {
+          _availableAreas.add(val);
+        }
+        _selectedAreas.add(val);
+      });
+      _customAreaController.clear();
+    }
   }
 
   @override
@@ -138,24 +154,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       children: [
                         Expanded(
                           child: TextField(
+                            controller: _customAreaController,
                             decoration: InputDecoration(
                               labelText: 'Custom Area',
-                              hintText: 'e.g. patio',
+                              hintText: 'e.g. bar, patio',
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               isDense: true,
                             ),
-                            onSubmitted: (val) {
-                              if (val.isNotEmpty &&
-                                  !_selectedAreas.contains(val.toLowerCase())) {
-                                setState(() {
-                                  _availableAreas.add(val.toLowerCase());
-                                  _selectedAreas.add(val.toLowerCase());
-                                });
-                              }
-                            },
+                            onSubmitted: (_) => _addCustomArea(),
                           ),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton.tonalIcon(
+                          onPressed: _addCustomArea,
+                          icon: const Icon(Icons.add, size: 20),
+                          label: const Text('Add'),
                         ),
                       ],
                     ),
@@ -205,18 +220,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _saveSettings() async {
     final storage = context.read<StorageService>();
-    final socket = context.read<SocketProvider>();
 
-    await storage.setServerUrl(_serverUrlController.text.trim());
-    await storage.setApiKey(_apiKeyController.text.trim());
+    final url = _serverUrlController.text.trim();
+    final key = _apiKeyController.text.trim();
+
+    await storage.setServerUrl(url);
+    await storage.setApiKey(key);
     await storage.setPrintAreas(_selectedAreas);
 
-    // Reconnect with new settings
-    socket.disconnect();
-    if (_serverUrlController.text.isNotEmpty &&
-        _apiKeyController.text.isNotEmpty) {
-      socket.connect();
-    }
+    // Pass settings directly to the background service via event data
+    // (avoids SharedPreferences cache issues in the background isolate)
+    FlutterBackgroundService().invoke('update-settings', {
+      'serverUrl': url,
+      'apiKey': key,
+      'printAreas': _selectedAreas,
+    });
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

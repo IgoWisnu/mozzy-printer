@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../../data/models/print_job_model.dart';
+import '../../data/models/printer_model.dart';
 import '../../data/services/socket_service.dart';
 import '../../data/services/storage_service.dart';
 import '../../data/services/thermal_printer_service.dart';
@@ -88,6 +90,10 @@ void onStart(ServiceInstance service) async {
   // --- Keep a map of connected devices so we don't reconnect each time ---
   final Map<String, Printer> connectedDevices = {};
 
+  // --- Local printer list (kept in sync via 'update-printers' events) ---
+  List<PrinterModel> localPrinters = storageService.printers;
+  debugPrint('📋 Loaded ${localPrinters.length} printers from storage');
+
   // --- Printing Logic ---
   Future<void> processJobData(
     Map<String, dynamic> data, {
@@ -96,9 +102,7 @@ void onStart(ServiceInstance service) async {
     try {
       final job = PrintJobModel.fromSocketData(data);
 
-      // Reload printers from storage to get latest config
-      await storageService.init();
-      final mappedPrinters = storageService.printers
+      final mappedPrinters = localPrinters
           .where(
             (p) => p.printArea.toLowerCase() == job.printArea.toLowerCase(),
           )
@@ -125,12 +129,14 @@ void onStart(ServiceInstance service) async {
       int successCount = 0;
       for (final pm in mappedPrinters) {
         try {
-          // Reuse existing connection or create a new one
           Printer device;
+          bool needsFreshConnection = false;
+
           if (connectedDevices.containsKey(pm.address)) {
             device = connectedDevices[pm.address]!;
             debugPrint('♻️ Reusing existing connection to ${pm.name}');
           } else {
+            needsFreshConnection = true;
             device = Printer(
               address: pm.address,
               name: pm.name,
@@ -139,28 +145,58 @@ void onStart(ServiceInstance service) async {
                   ? ConnectionType.BLE
                   : ConnectionType.USB,
             );
+          }
 
+          if (needsFreshConnection) {
             final isConnected = await thermalPrinterService.connectToPrinter(
               device,
             );
             if (!isConnected) {
-              debugPrint('❌ Could not connect to ${pm.name}');
+              debugPrint('❌ Could not connect to ${pm.name} (${pm.address})');
               continue;
             }
             connectedDevices[pm.address] = device;
           }
 
           // Generate ESC/POS bytes
-          final bytes = job.printArea.toLowerCase() == 'kitchen'
-              ? await KitchenFormatter.format(job.payload)
-              : await ReceiptFormatter.format(job.payload);
+          final bytes = job.printArea.toLowerCase() == 'cashier'
+              ? await ReceiptFormatter.format(job.payload)
+              : await KitchenFormatter.format(job.payload);
 
-          // Print the bytes (keep the connection alive for future jobs)
+          // Print the bytes
           final printed = await thermalPrinterService.printBytes(device, bytes);
-          if (printed) successCount++;
+          if (printed) {
+            successCount++;
+          } else {
+            // Print failed — clear cache and try reconnecting once
+            debugPrint(
+              '⚠️ Print failed for ${pm.name}, retrying with fresh connection...',
+            );
+            connectedDevices.remove(pm.address);
+            final retryDevice = Printer(
+              address: pm.address,
+              name: pm.name,
+              connectionType:
+                  pm.connectionType.toString().split('.').last == 'bluetooth'
+                  ? ConnectionType.BLE
+                  : ConnectionType.USB,
+            );
+            final reconnected = await thermalPrinterService.connectToPrinter(
+              retryDevice,
+            );
+            if (reconnected) {
+              connectedDevices[pm.address] = retryDevice;
+              final retryPrinted = await thermalPrinterService.printBytes(
+                retryDevice,
+                bytes,
+              );
+              if (retryPrinted) successCount++;
+            } else {
+              debugPrint('❌ Retry failed for ${pm.name} (${pm.address})');
+            }
+          }
         } catch (e) {
-          debugPrint('Print error to ${pm.name}: $e');
-          // Remove from cache if the connection died
+          debugPrint('❌ Print error to ${pm.name}: $e');
           connectedDevices.remove(pm.address);
         }
       }
@@ -231,21 +267,80 @@ void onStart(ServiceInstance service) async {
 
   // Listen for commands from the UI
   service.on('update-settings').listen((event) async {
-    await storageService.init(); // Refresh settings from SharedPreferences
+    debugPrint('⚙️ update-settings received');
     socketService.disconnect();
 
-    final newUrl = storageService.serverUrl;
-    final newKey = storageService.apiKey;
+    // Read settings directly from the event data (not SharedPreferences)
+    // This avoids cross-isolate SharedPreferences cache issues
+    String newUrl = '';
+    String newKey = '';
+    List<String> newAreas = [];
+
+    if (event != null) {
+      newUrl = event['serverUrl'] as String? ?? '';
+      newKey = event['apiKey'] as String? ?? '';
+      final rawAreas = event['printAreas'];
+      if (rawAreas is List) {
+        newAreas = rawAreas.cast<String>();
+      }
+    }
+
+    // Fallback to StorageService if event data is empty
+    // (e.g. when PrinterProvider triggers update-settings without data)
+    if (newUrl.isEmpty || newKey.isEmpty) {
+      try {
+        await storageService.init();
+        newUrl = storageService.serverUrl;
+        newKey = storageService.apiKey;
+        newAreas = storageService.printAreas;
+      } catch (e) {
+        debugPrint('⚠️ Failed to read from SharedPreferences: $e');
+      }
+    }
+
+    debugPrint(
+      '⚙️ Server URL: "$newUrl", API Key: "${newKey.isNotEmpty ? "***set***" : "empty"}"',
+    );
 
     if (newUrl.isNotEmpty && newKey.isNotEmpty) {
       debugPrint('🔄 Background service reconnecting to: $newUrl');
       socketService.connect(serverUrl: newUrl, apiKey: newKey);
-      // Print areas will be registered automatically by the listener above
+      // Print areas will be registered automatically by the connection state listener
+      // but we also store them for the auto-register callback
+      if (newAreas.isNotEmpty) {
+        // Update local reference so the connection listener can use them
+        storageService.setServerUrl(newUrl);
+        storageService.setApiKey(newKey);
+        storageService.setPrintAreas(newAreas);
+      }
+    } else {
+      debugPrint('⚠️ Cannot connect: URL or Key is empty');
     }
   });
 
   service.on('disconnect').listen((event) {
     socketService.disconnect();
+  });
+
+  service.on('update-printers').listen((event) {
+    if (event == null) return;
+    final printersJsonStr = event['printers'] as String?;
+    if (printersJsonStr != null) {
+      try {
+        final list = jsonDecode(printersJsonStr) as List<dynamic>;
+        localPrinters = list
+            .map((e) => PrinterModel.fromJson(e as Map<String, dynamic>))
+            .toList();
+        debugPrint(
+          '📋 Updated local printers: ${localPrinters.length} printers',
+        );
+        for (final p in localPrinters) {
+          debugPrint('   - ${p.name} → ${p.printArea} (${p.address})');
+        }
+      } catch (e) {
+        debugPrint('⚠️ Error parsing printers: $e');
+      }
+    }
   });
 
   service.on('test-print').listen((event) async {
