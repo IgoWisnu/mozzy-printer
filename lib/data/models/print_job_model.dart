@@ -1,11 +1,25 @@
 import 'package:flutter/foundation.dart';
 
+class PrintJobModifier {
+  final String name;
+  final num price;
+
+  PrintJobModifier({required this.name, this.price = 0});
+
+  factory PrintJobModifier.fromJson(Map<String, dynamic> json) =>
+      PrintJobModifier(
+        name: (json['name'] ?? '') as String,
+        price: (json['price'] ?? 0) as num,
+      );
+}
+
 class PrintJobItem {
   final String name;
   final num quantity;
   final num pricePerItem;
   final num totalPrice;
   final String? note;
+  final List<PrintJobModifier> modifiers;
 
   PrintJobItem({
     required this.name,
@@ -13,6 +27,7 @@ class PrintJobItem {
     required this.pricePerItem,
     required this.totalPrice,
     this.note,
+    this.modifiers = const [],
   });
 
   factory PrintJobItem.fromJson(Map<String, dynamic> json) {
@@ -25,12 +40,24 @@ class PrintJobItem {
       qty = rawQty as num;
     }
 
+    // Parse modifiers
+    List<PrintJobModifier> mods = [];
+    if (json['modifiers'] != null && json['modifiers'] is List) {
+      mods = (json['modifiers'] as List<dynamic>)
+          .map(
+            (e) =>
+                PrintJobModifier.fromJson(Map<String, dynamic>.from(e as Map)),
+          )
+          .toList();
+    }
+
     return PrintJobItem(
       name: (json['name'] ?? json['itemName'] ?? 'Unknown') as String,
       quantity: qty,
       pricePerItem: (json['pricePerItem'] ?? json['price'] ?? 0) as num,
       totalPrice: (json['totalPrice'] ?? json['total_price'] ?? 0) as num,
       note: (json['note'] ?? json['notes']) as String?,
+      modifiers: mods,
     );
   }
 }
@@ -51,6 +78,7 @@ class PrintJobPayload {
   final bool isDineIn;
   final String? table;
   final int queueNumber;
+  final String? orderType;
 
   // Items
   final List<PrintJobItem> items;
@@ -83,6 +111,7 @@ class PrintJobPayload {
     this.isDineIn = false,
     this.table,
     required this.queueNumber,
+    this.orderType,
     required this.items,
     this.subtotal = 0,
     this.taxAmount = 0,
@@ -98,7 +127,6 @@ class PrintJobPayload {
   factory PrintJobPayload.fromJson(Map<String, dynamic> json) {
     debugPrint('📦 Parsing payload keys: ${json.keys.toList()}');
 
-    // Parse queueNumber — can be int or String
     int queueNum;
     final rawQueue = json['queueNumber'] ?? json['queue_number'] ?? 0;
     if (rawQueue is String) {
@@ -120,6 +148,7 @@ class PrintJobPayload {
       isDineIn: json['isDineIn'] as bool? ?? false,
       table: json['table'] != null ? '${json['table']}' : null,
       queueNumber: queueNum,
+      orderType: json['orderType'] as String?,
       items: json['items'] != null
           ? (json['items'] as List<dynamic>)
                 .map(

@@ -17,6 +17,9 @@ class SocketProvider extends ChangeNotifier {
 
   SocketProvider() {
     _setupListeners();
+    // Ask the background service for the current state
+    // (in case the service was already running before the app opened)
+    FlutterBackgroundService().invoke('request-state');
   }
 
   // ─── Getters ────────────────────────────────────────────

@@ -2,14 +2,14 @@ import 'dart:typed_data';
 import 'package:flutter_thermal_printer/flutter_thermal_printer.dart';
 import '../models/print_job_model.dart';
 
-/// Formats a cashier receipt — full order details with pricing and payment.
+/// Formats a full receipt for cashier/kasir printers.
 class ReceiptFormatter {
   static Future<Uint8List> format(PrintJobPayload payload) async {
     final profile = await CapabilityProfile.load();
     final generator = Generator(PaperSize.mm58, profile);
     List<int> bytes = [];
 
-    // Store / Business Header
+    // ─── Store Header ───
     if (payload.storeName != null && payload.storeName!.isNotEmpty) {
       bytes += generator.text(
         payload.storeName!,
@@ -17,7 +17,7 @@ class ReceiptFormatter {
           align: PosAlign.center,
           bold: true,
           height: PosTextSize.size2,
-          width: PosTextSize.size2,
+          width: PosTextSize.size1,
         ),
       );
     }
@@ -35,19 +35,28 @@ class ReceiptFormatter {
     }
     bytes += generator.hr(ch: '=');
 
-    // Order details
+    // ─── Order Info ───
     bytes += generator.text(
       'Order #${payload.orderNumber}',
-      styles: const PosStyles(bold: true, align: PosAlign.center),
+      styles: const PosStyles(
+        bold: true,
+        align: PosAlign.center,
+        height: PosTextSize.size2,
+      ),
     );
     bytes += generator.text(
       'Queue: ${payload.queueNumber}',
-      styles: const PosStyles(align: PosAlign.center),
+      styles: const PosStyles(bold: true, align: PosAlign.center),
     );
+
+    final dineInLabel = payload.isDineIn
+        ? 'DINE IN'
+        : (payload.orderType ?? 'TAKE AWAY').toUpperCase();
     bytes += generator.text(
-      payload.isDineIn ? 'DINE IN' : 'TAKE AWAY',
+      dineInLabel,
       styles: const PosStyles(align: PosAlign.center, bold: true),
     );
+
     if (payload.isDineIn && payload.table != null && payload.table != '-') {
       bytes += generator.text(
         'Table: ${payload.table}',
@@ -61,120 +70,133 @@ class ReceiptFormatter {
       );
     }
     if (payload.cashierName != null && payload.cashierName!.isNotEmpty) {
-      bytes += generator.text(
-        'Cashier: ${payload.cashierName}',
-        styles: const PosStyles(align: PosAlign.center),
-      );
+      bytes += generator.text('Cashier: ${payload.cashierName}');
     }
     if (payload.date != null) {
-      bytes += generator.text(
-        payload.date!,
-        styles: const PosStyles(align: PosAlign.center),
-      );
+      bytes += generator.text(payload.date!);
     }
     bytes += generator.hr(ch: '-');
 
-    // Items
+    // ─── Items ───
     for (final item in payload.items) {
       final qtyStr = item.quantity % 1 == 0
           ? '${item.quantity.toInt()}'
           : '${item.quantity}';
+
+      // Build item name with modifiers inline
+      String itemLabel = '${qtyStr}x ${item.name}';
+
+      final priceStr = _formatCurrency(item.totalPrice);
+
+      // Use row layout: item label left, price right
       bytes += generator.row([
         PosColumn(
-          text: '${qtyStr}x',
-          width: 2,
-          styles: const PosStyles(bold: true),
+          text: itemLabel,
+          width: 8,
+          styles: const PosStyles(bold: false),
         ),
-        PosColumn(text: item.name, width: 7),
         PosColumn(
-          text: _formatCurrency(item.totalPrice),
-          width: 3,
+          text: priceStr,
+          width: 4,
           styles: const PosStyles(align: PosAlign.right),
         ),
       ]);
+
+      // Modifier
+      if (item.modifiers.isNotEmpty) {
+        final modNames = item.modifiers.map((m) => m.name).join(', ');
+        bytes += generator.text(
+          '  ${modNames}',
+          styles: const PosStyles(bold: false),
+        );
+      }
+
+      // Note
       if (item.note != null && item.note!.isNotEmpty) {
         bytes += generator.text(
-          '   Note: ${item.note}',
-          styles: const PosStyles(fontType: PosFontType.fontB),
+          '  * ${item.note}',
+          styles: const PosStyles(bold: false),
         );
       }
     }
 
     bytes += generator.hr(ch: '-');
 
-    // Totals
+    // ─── Totals ───
     bytes += generator.row([
-      PosColumn(text: 'Subtotal', width: 7),
+      PosColumn(text: 'Subtotal', width: 8),
       PosColumn(
         text: _formatCurrency(payload.subtotal),
-        width: 5,
+        width: 4,
         styles: const PosStyles(align: PosAlign.right),
       ),
     ]);
     if (payload.taxAmount > 0) {
       bytes += generator.row([
-        PosColumn(text: 'Tax', width: 7),
+        PosColumn(text: 'Tax', width: 8),
         PosColumn(
           text: _formatCurrency(payload.taxAmount),
-          width: 5,
+          width: 4,
           styles: const PosStyles(align: PosAlign.right),
         ),
       ]);
     }
     if (payload.feesAmount > 0) {
       bytes += generator.row([
-        PosColumn(text: 'Fees', width: 7),
+        PosColumn(text: 'Fees', width: 8),
         PosColumn(
           text: _formatCurrency(payload.feesAmount),
-          width: 5,
+          width: 4,
           styles: const PosStyles(align: PosAlign.right),
         ),
       ]);
     }
-    bytes += generator.hr(ch: '-');
+    bytes += generator.hr(ch: '=');
     bytes += generator.row([
       PosColumn(
         text: 'TOTAL',
-        width: 7,
+        width: 8,
         styles: const PosStyles(bold: true, height: PosTextSize.size2),
       ),
       PosColumn(
         text: _formatCurrency(payload.grandTotal),
-        width: 5,
+        width: 4,
         styles: const PosStyles(
-          align: PosAlign.right,
           bold: true,
+          align: PosAlign.right,
           height: PosTextSize.size2,
         ),
       ),
     ]);
+    bytes += generator.hr(ch: '=');
 
-    // Payment
-    bytes += generator.hr(ch: '-');
+    // ─── Payment ───
     if (payload.paymentMethod != null) {
       bytes += generator.row([
-        PosColumn(text: 'Payment', width: 7),
+        PosColumn(text: 'Payment', width: 8),
         PosColumn(
           text: payload.paymentMethod!,
-          width: 5,
+          width: 4,
           styles: const PosStyles(align: PosAlign.right),
         ),
       ]);
     }
-    bytes += generator.row([
-      PosColumn(text: 'Paid', width: 7),
-      PosColumn(
-        text: _formatCurrency(payload.payAmount),
-        width: 5,
-        styles: const PosStyles(align: PosAlign.right),
-      ),
-    ]);
+    if (payload.payAmount > 0) {
+      bytes += generator.row([
+        PosColumn(text: 'Paid', width: 8),
+        PosColumn(
+          text: _formatCurrency(payload.payAmount),
+          width: 4,
+          styles: const PosStyles(align: PosAlign.right),
+        ),
+      ]);
+    }
     if (payload.changeAmount > 0) {
       bytes += generator.row([
-        PosColumn(text: 'Change', width: 7),
+        PosColumn(text: 'Change', width: 8),
         PosColumn(
           text: _formatCurrency(payload.changeAmount),
-          width: 5,
+          width: 4,
           styles: const PosStyles(align: PosAlign.right),
         ),
       ]);
@@ -182,11 +204,15 @@ class ReceiptFormatter {
     if (payload.paymentStatus != null) {
       bytes += generator.text(
         payload.paymentStatus!,
-        styles: const PosStyles(align: PosAlign.center, bold: true),
+        styles: const PosStyles(
+          bold: true,
+          align: PosAlign.center,
+          height: PosTextSize.size2,
+        ),
       );
     }
 
-    bytes += generator.hr(ch: '=');
+    bytes += generator.feed(1);
     bytes += generator.text(
       'Thank you!',
       styles: const PosStyles(align: PosAlign.center, bold: true),
@@ -198,17 +224,12 @@ class ReceiptFormatter {
   }
 
   static String _formatCurrency(num amount) {
-    final formatted = amount.toStringAsFixed(0);
-    // Add thousand separators
-    final result = StringBuffer();
-    int count = 0;
-    for (int i = formatted.length - 1; i >= 0; i--) {
-      result.write(formatted[i]);
-      count++;
-      if (count % 3 == 0 && i > 0) {
-        result.write('.');
-      }
+    final str = amount.toInt().toString();
+    final buffer = StringBuffer();
+    for (int i = 0; i < str.length; i++) {
+      if (i > 0 && (str.length - i) % 3 == 0) buffer.write('.');
+      buffer.write(str[i]);
     }
-    return result.toString().split('').reversed.join('');
+    return buffer.toString();
   }
 }

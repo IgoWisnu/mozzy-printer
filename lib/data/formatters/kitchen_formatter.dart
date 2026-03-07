@@ -2,16 +2,19 @@ import 'dart:typed_data';
 import 'package:flutter_thermal_printer/flutter_thermal_printer.dart';
 import '../models/print_job_model.dart';
 
-/// Formats a kitchen ticket — items only, large bold text, no pricing.
+/// Formats a kitchen/bar ticket — items with modifiers, no pricing.
 class KitchenFormatter {
   static Future<Uint8List> format(PrintJobPayload payload) async {
     final profile = await CapabilityProfile.load();
     final generator = Generator(PaperSize.mm58, profile);
     List<int> bytes = [];
 
-    // Header
+    // Header — show the print area name (e.g. KITCHEN, BAR)
+    final areaLabel = payload.printArea.isNotEmpty
+        ? payload.printArea.toUpperCase()
+        : 'KITCHEN';
     bytes += generator.text(
-      '-- ${payload.printArea.toUpperCase()} --',
+      '-- $areaLabel --',
       styles: const PosStyles(
         align: PosAlign.center,
         bold: true,
@@ -38,14 +41,19 @@ class KitchenFormatter {
         height: PosTextSize.size2,
       ),
     );
+
+    final dineInLabel = payload.isDineIn
+        ? 'DINE IN'
+        : (payload.orderType ?? 'TAKE AWAY').toUpperCase();
     bytes += generator.text(
-      payload.isDineIn ? 'DINE IN' : 'TAKE AWAY',
+      dineInLabel,
       styles: const PosStyles(
         align: PosAlign.center,
         bold: true,
         height: PosTextSize.size2,
       ),
     );
+
     if (payload.isDineIn && payload.table != null && payload.table != '-') {
       bytes += generator.text(
         'Table: ${payload.table}',
@@ -70,23 +78,26 @@ class KitchenFormatter {
     }
     bytes += generator.hr(ch: '-');
 
-    // Items — big and bold for kitchen readability
+    // Items — same style as receipt (normal size, bold, with modifiers inline)
     for (final item in payload.items) {
       final qtyStr = item.quantity % 1 == 0
           ? '${item.quantity.toInt()}'
           : '${item.quantity}';
-      bytes += generator.text(
-        '${qtyStr}x ${item.name}',
-        styles: const PosStyles(
-          bold: false,
-          height: PosTextSize.size1,
-          width: PosTextSize.size1,
-        ),
-      );
+
+      // Item name with modifiers inline
+      String itemLabel = '${qtyStr}x ${item.name}';
+      if (item.modifiers.isNotEmpty) {
+        final modNames = item.modifiers.map((m) => m.name).join(', ');
+        itemLabel += ' ($modNames)';
+      }
+
+      bytes += generator.text(itemLabel, styles: const PosStyles(bold: false));
+
+      // Note
       if (item.note != null && item.note!.isNotEmpty) {
         bytes += generator.text(
-          '   - ${item.note}',
-          styles: const PosStyles(bold: false, height: PosTextSize.size1),
+          '  * ${item.note}',
+          styles: const PosStyles(bold: false),
         );
       }
     }

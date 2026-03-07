@@ -16,11 +16,19 @@ import 'package:flutter_thermal_printer/utils/printer.dart';
 Future<void> initializeBackgroundService() async {
   final service = FlutterBackgroundService();
 
+  // If the service is already running (e.g. from a previous app session),
+  // don't reconfigure — just reuse the existing instance.
+  final isRunning = await service.isRunning();
+  if (isRunning) {
+    debugPrint('🔄 Background service already running, skipping configure');
+    return;
+  }
+
   const AndroidNotificationChannel channel = AndroidNotificationChannel(
-    'mozzy_print_service_channel', // id
-    'Mozzy Print Service', // name
+    'mozzy_print_service_channel',
+    'Mozzy Print Service',
     description: 'Keeps the Socket.IO print service running in the background',
-    importance: Importance.low, // importance must be at low or higher level
+    importance: Importance.low,
   );
 
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -41,6 +49,10 @@ Future<void> initializeBackgroundService() async {
       initialNotificationTitle: 'Mozzy Print Service',
       initialNotificationContent: 'Initializing...',
       foregroundServiceNotificationId: 888,
+      foregroundServiceTypes: [
+        AndroidForegroundType.dataSync,
+        AndroidForegroundType.connectedDevice,
+      ],
     ),
     iosConfiguration: IosConfiguration(
       autoStart: true,
@@ -61,7 +73,32 @@ Future<bool> onIosBackground(ServiceInstance service) async {
 void onStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
 
+  // CRITICAL: Set as foreground service IMMEDIATELY — before any async work.
+  // Android 12+ requires startForeground() within ~5 seconds.
+  if (service is AndroidServiceInstance) {
+    await service.setAsForegroundService();
+  }
+
   final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+
+  // Show initial notification right away
+  if (service is AndroidServiceInstance) {
+    flutterLocalNotificationsPlugin.show(
+      id: 888,
+      title: 'Mozzy Print Service',
+      body: 'Starting...',
+      notificationDetails: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'mozzy_print_service_channel',
+          'Mozzy Print Service',
+          icon: 'ic_bg_service_small',
+          ongoing: true,
+        ),
+      ),
+    );
+  }
+
+  // Now safe to do async initialization
   final storageService = StorageService();
   await storageService.init();
 
@@ -159,7 +196,9 @@ void onStart(ServiceInstance service) async {
           }
 
           // Generate ESC/POS bytes
-          final bytes = job.printArea.toLowerCase() == 'cashier'
+          final area = job.printArea.toLowerCase();
+          final isCashier = area == 'cashier' || area == 'kasir';
+          final bytes = isCashier
               ? await ReceiptFormatter.format(job.payload)
               : await KitchenFormatter.format(job.payload);
 
@@ -320,6 +359,12 @@ void onStart(ServiceInstance service) async {
 
   service.on('disconnect').listen((event) {
     socketService.disconnect();
+  });
+
+  // Allow the UI to request current connection state
+  service.on('request-state').listen((_) {
+    final stateStr = socketService.currentState.toString().split('.').last;
+    service.invoke('socket-state', {'state': stateStr});
   });
 
   service.on('update-printers').listen((event) {
