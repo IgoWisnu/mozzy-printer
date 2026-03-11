@@ -85,6 +85,7 @@ class PrintJobPayload {
 
   // Totals
   final num subtotal;
+  final num discountAmount;
   final num taxAmount;
   final num feesAmount;
   final num grandTotal;
@@ -114,6 +115,7 @@ class PrintJobPayload {
     this.orderType,
     required this.items,
     this.subtotal = 0,
+    this.discountAmount = 0,
     this.taxAmount = 0,
     this.feesAmount = 0,
     this.grandTotal = 0,
@@ -159,6 +161,7 @@ class PrintJobPayload {
                 .toList()
           : [],
       subtotal: (json['subtotal'] ?? 0) as num,
+      discountAmount: (json['discountAmount'] ?? 0) as num,
       taxAmount: (json['taxAmount'] ?? 0) as num,
       feesAmount: (json['feesAmount'] ?? 0) as num,
       grandTotal: (json['grandTotal'] ?? 0) as num,

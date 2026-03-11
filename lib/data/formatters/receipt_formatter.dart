@@ -69,12 +69,6 @@ class ReceiptFormatter {
         styles: const PosStyles(align: PosAlign.center),
       );
     }
-    if (payload.cashierName != null && payload.cashierName!.isNotEmpty) {
-      bytes += generator.text('Cashier: ${payload.cashierName}');
-    }
-    if (payload.date != null) {
-      bytes += generator.text(payload.date!);
-    }
     bytes += generator.hr(ch: '-');
 
     // ─── Items ───
@@ -83,32 +77,42 @@ class ReceiptFormatter {
           ? '${item.quantity.toInt()}'
           : '${item.quantity}';
 
-      // Build item name with modifiers inline
-      String itemLabel = '${qtyStr}x ${item.name}';
-
+      // Item label and Price
+      final itemLabel = '${qtyStr}x ${item.name}';
       final priceStr = _formatCurrency(item.totalPrice);
 
-      // Use row layout: item label left, price right
-      bytes += generator.row([
-        PosColumn(
-          text: itemLabel,
-          width: 8,
-          styles: const PosStyles(bold: false),
-        ),
-        PosColumn(
-          text: priceStr,
-          width: 4,
-          styles: const PosStyles(align: PosAlign.right),
-        ),
-      ]);
-
-      // Modifier
-      if (item.modifiers.isNotEmpty) {
+      if (item.modifiers.isEmpty) {
+        bytes += generator.row([
+          PosColumn(
+            text: itemLabel,
+            width: 8,
+            styles: const PosStyles(bold: false),
+          ),
+          PosColumn(
+            text: priceStr,
+            width: 4,
+            styles: const PosStyles(align: PosAlign.right),
+          ),
+        ]);
+      } else {
         final modNames = item.modifiers.map((m) => m.name).join(', ');
-        bytes += generator.text(
-          '  ${modNames}',
-          styles: const PosStyles(bold: false),
-        );
+        bytes += generator.row([
+          PosColumn(
+            text: itemLabel,
+            width: 5,
+            styles: const PosStyles(bold: false),
+          ),
+          PosColumn(
+            text: modNames,
+            width: 4,
+            styles: const PosStyles(fontType: PosFontType.fontB),
+          ),
+          PosColumn(
+            text: priceStr,
+            width: 3,
+            styles: const PosStyles(align: PosAlign.right),
+          ),
+        ]);
       }
 
       // Note
@@ -131,6 +135,16 @@ class ReceiptFormatter {
         styles: const PosStyles(align: PosAlign.right),
       ),
     ]);
+    if (payload.discountAmount > 0) {
+      bytes += generator.row([
+        PosColumn(text: 'Discount', width: 8),
+        PosColumn(
+          text: '-${_formatCurrency(payload.discountAmount)}',
+          width: 4,
+          styles: const PosStyles(align: PosAlign.right),
+        ),
+      ]);
+    }
     if (payload.taxAmount > 0) {
       bytes += generator.row([
         PosColumn(text: 'Tax', width: 8),
@@ -143,7 +157,7 @@ class ReceiptFormatter {
     }
     if (payload.feesAmount > 0) {
       bytes += generator.row([
-        PosColumn(text: 'Fees', width: 8),
+        PosColumn(text: 'Service', width: 8),
         PosColumn(
           text: _formatCurrency(payload.feesAmount),
           width: 4,
@@ -201,16 +215,20 @@ class ReceiptFormatter {
         ),
       ]);
     }
-    if (payload.paymentStatus != null) {
-      bytes += generator.text(
-        payload.paymentStatus!,
-        styles: const PosStyles(
-          bold: true,
-          align: PosAlign.center,
-          height: PosTextSize.size2,
-        ),
-      );
-    }
+
+    bytes += generator.hr(ch: '-');
+
+    final date = payload.date ?? '';
+    final cashierName = payload.cashierName ?? '';
+
+    bytes += generator.row([
+      PosColumn(text: date, width: 8, styles: const PosStyles(bold: false)),
+      PosColumn(
+        text: cashierName,
+        width: 4,
+        styles: const PosStyles(align: PosAlign.right),
+      ),
+    ]);
 
     bytes += generator.feed(1);
     bytes += generator.text(
