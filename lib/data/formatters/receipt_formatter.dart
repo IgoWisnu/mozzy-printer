@@ -12,7 +12,7 @@ class ReceiptFormatter {
 
     // ─── Top Delimiter ───
     bytes += generator.text(
-      '=========================================',
+      '================================',
       styles: const PosStyles(align: PosAlign.center),
     );
 
@@ -23,11 +23,12 @@ class ReceiptFormatter {
       final img.Image? decodedImage = img.decodeImage(imageBytes);
       if (decodedImage != null) {
         // resize image if needed, for 58mm printer usually max width is 384
-        final img.Image resizedImage = img.copyResize(decodedImage, width: 250);
-        bytes += generator.imageRaster(resizedImage, align: PosAlign.center);
+        final img.Image resizedImage = img.copyResize(decodedImage, width: 200);
+        bytes += generator.image(resizedImage, align: PosAlign.center);
       }
     } catch (e) {
       // In case logo fails to load (e.g. not found), ignore safely
+      print('⚠️ Failed to load or print logo: $e');
     }
 
     // ─── Dummy Header Texts ───
@@ -45,28 +46,28 @@ class ReceiptFormatter {
       styles: const PosStyles(align: PosAlign.center),
     );
     bytes += generator.text(
-      '=========================================',
+      '================================',
       styles: const PosStyles(align: PosAlign.center),
     );
 
     bytes += generator.feed(1);
 
     // ─── Order Info ───
-    bytes += generator.text('Kode Order    : ${payload.orderNumber}');
+    bytes += generator.text('Kode Order : ${payload.orderNumber}');
     final dateStr = payload.date ?? '-';
-    bytes += generator.text('Tanggal       : $dateStr');
+    bytes += generator.text('Tanggal    : $dateStr');
     final kepada = payload.customerName?.isNotEmpty == true
         ? payload.customerName!
         : '-';
-    bytes += generator.text('Kepada        : $kepada');
+    bytes += generator.text('Kepada     : $kepada');
     final kasir = payload.cashierName?.isNotEmpty == true
         ? payload.cashierName!
         : '-';
-    bytes += generator.text('Kasir Online  : $kasir');
+    bytes += generator.text('Kasir      : $kasir');
 
     bytes += generator.feed(1);
     bytes += generator.text(
-      '-----------------------------------------',
+      '--------------------------------',
       styles: const PosStyles(align: PosAlign.center),
     );
 
@@ -90,7 +91,7 @@ class ReceiptFormatter {
       ),
     ]);
     bytes += generator.text(
-      '-----------------------------------------',
+      '--------------------------------',
       styles: const PosStyles(align: PosAlign.center),
     );
 
@@ -135,7 +136,7 @@ class ReceiptFormatter {
     }
 
     bytes += generator.text(
-      '-----------------------------------------',
+      '--------------------------------',
       styles: const PosStyles(align: PosAlign.center),
     );
 
@@ -215,12 +216,12 @@ class ReceiptFormatter {
 
     // ─── Terms ───
     bytes += generator.text(
-      '"Batas pengambilan orderan maksimum 3 bulan\nsejak nota dikeluarkan. Produk rusak akan\ndiganti. Klaim kerusakan wajib disertai\nvideo unboxing (maks. 1x24 jam)."',
-      styles: const PosStyles(align: PosAlign.center),
+      '"Batas pengambilan orderan maksimum 3 bulan sejak nota dikeluarkan. Produk rusak akan diganti. Klaim kerusakan wajib disertai video unboxing (maks. 1x24 jam)."',
+      styles: const PosStyles(align: PosAlign.left),
     );
 
     bytes += generator.text(
-      '=========================================',
+      '================================',
       styles: const PosStyles(align: PosAlign.center),
     );
 
