@@ -81,46 +81,30 @@ class ReceiptFormatter {
       final itemLabel = '${qtyStr}x ${item.name}';
       final priceStr = _formatCurrency(item.totalPrice);
 
-      if (item.modifiers.isEmpty) {
-        bytes += generator.row([
-          PosColumn(
-            text: itemLabel,
-            width: 8,
-            styles: const PosStyles(bold: false),
+      bytes += generator.row([
+        PosColumn(
+          text: itemLabel,
+          width: 9,
+          styles: const PosStyles(height: PosTextSize.size1),
+        ),
+        PosColumn(
+          text: priceStr,
+          width: 3,
+          styles: const PosStyles(
+            align: PosAlign.right,
+            height: PosTextSize.size1,
           ),
-          PosColumn(
-            text: priceStr,
-            width: 4,
-            styles: const PosStyles(align: PosAlign.right),
-          ),
-        ]);
-      } else {
+        ),
+      ]);
+
+      if (item.modifiers.isNotEmpty) {
         final modNames = item.modifiers.map((m) => m.name).join(', ');
-        bytes += generator.row([
-          PosColumn(
-            text: itemLabel,
-            width: 5,
-            styles: const PosStyles(bold: false),
-          ),
-          PosColumn(
-            text: modNames,
-            width: 4,
-            styles: const PosStyles(fontType: PosFontType.fontB),
-          ),
-          PosColumn(
-            text: priceStr,
-            width: 3,
-            styles: const PosStyles(align: PosAlign.right),
-          ),
-        ]);
+        bytes += generator.text('  + $modNames');
       }
 
       // Note
       if (item.note != null && item.note!.isNotEmpty) {
-        bytes += generator.text(
-          '  * ${item.note}',
-          styles: const PosStyles(bold: false),
-        );
+        bytes += generator.text('  ** ${item.note}');
       }
     }
 

@@ -84,21 +84,22 @@ class KitchenFormatter {
           ? '${item.quantity.toInt()}'
           : '${item.quantity}';
 
-      // Item name with modifiers inline
-      String itemLabel = '${qtyStr}x ${item.name}';
+      // Item name
+      final itemLabel = '${qtyStr}x ${item.name}';
+
+      bytes += generator.text(
+        itemLabel,
+        styles: const PosStyles(height: PosTextSize.size2),
+      );
+
       if (item.modifiers.isNotEmpty) {
         final modNames = item.modifiers.map((m) => m.name).join(', ');
-        itemLabel += ' ($modNames)';
+        bytes += generator.text('  + $modNames');
       }
-
-      bytes += generator.text(itemLabel, styles: const PosStyles(bold: false));
 
       // Note
       if (item.note != null && item.note!.isNotEmpty) {
-        bytes += generator.text(
-          '  * ${item.note}',
-          styles: const PosStyles(bold: false),
-        );
+        bytes += generator.text('  ** ${item.note}');
       }
     }
 
