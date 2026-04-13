@@ -10,84 +10,77 @@ class ReceiptFormatter {
     final generator = Generator(PaperSize.mm58, profile);
     List<int> bytes = [];
 
-    // ─── Top Delimiter ───
-    bytes += generator.text(
-      '================================',
-      styles: const PosStyles(align: PosAlign.center),
-    );
-
     // ─── Logo ───
     try {
       final ByteData data = await rootBundle.load('assets/images/logo.png');
       final Uint8List imageBytes = data.buffer.asUint8List();
       final img.Image? decodedImage = img.decodeImage(imageBytes);
       if (decodedImage != null) {
-        // resize image if needed, for 58mm printer usually max width is 384
-        final img.Image resizedImage = img.copyResize(decodedImage, width: 200);
+        final img.Image resizedImage = img.copyResize(
+          decodedImage,
+          width: 250,
+        ); // Sedikit diperbesar agar pas
         bytes += generator.image(resizedImage, align: PosAlign.center);
       }
     } catch (e) {
-      // In case logo fails to load (e.g. not found), ignore safely
       print('⚠️ Failed to load or print logo: $e');
+      // Fallback teks jika logo gagal
+      bytes += generator.text(
+        'EKA PRINT',
+        styles: const PosStyles(
+          align: PosAlign.center,
+          bold: true,
+          height: PosTextSize.size2,
+          width: PosTextSize.size2,
+        ),
+      );
     }
 
-    // ─── Dummy Header Texts ───
-    bytes += generator.text(
-      'EKA PRINT BALI',
-      styles: const PosStyles(
-        align: PosAlign.center,
-        bold: true,
-        height: PosTextSize.size2,
-        width: PosTextSize.size1,
-      ),
-    );
+    // ─── Tagline ───
     bytes += generator.text(
       'Professional digital printing',
-      styles: const PosStyles(align: PosAlign.center),
-    );
-    bytes += generator.text(
-      '================================',
-      styles: const PosStyles(align: PosAlign.center),
+      styles: const PosStyles(align: PosAlign.center, bold: true),
     );
 
     bytes += generator.feed(1);
 
     // ─── Order Info ───
-    bytes += generator.text('Kode Order : ${payload.orderNumber}');
-    final dateStr = payload.date ?? '-';
-    bytes += generator.text('Tanggal    : $dateStr');
+    // Menggunakan padding manual agar titik dua (:) rata
+    bytes += generator.text('Kode Order    : ${payload.orderNumber}');
+    bytes += generator.text('Tanggal       : ${payload.date ?? '-'}');
+    // Pastikan tambahkan properti deadline di model PrintJobPayload kamu
+    bytes += generator.text('Deadline      : ${'-'}');
+
     final kepada = payload.customerName?.isNotEmpty == true
         ? payload.customerName!
         : '-';
-    bytes += generator.text('Kepada     : $kepada');
+    bytes += generator.text('Kepada        : $kepada');
+
     final kasir = payload.cashierName?.isNotEmpty == true
         ? payload.cashierName!
         : '-';
-    bytes += generator.text('Kasir      : $kasir');
+    bytes += generator.text('Kasir Offline : $kasir');
 
     bytes += generator.feed(1);
-    bytes += generator.text(
-      '--------------------------------',
-      styles: const PosStyles(align: PosAlign.center),
-    );
 
     // ─── Items Header ───
+    // Lebar total harus 12
     bytes += generator.row([
-      PosColumn(text: 'Produk', width: 4, styles: const PosStyles(bold: true)),
+      PosColumn(text: 'Produk', width: 4), // Normal text di header
       PosColumn(
         text: 'Harga',
         width: 3,
-        styles: const PosStyles(align: PosAlign.right, bold: true),
+        styles: const PosStyles(align: PosAlign.right),
       ),
       PosColumn(
         text: 'Qty',
         width: 2,
-        styles: const PosStyles(align: PosAlign.center, bold: true),
+        styles: const PosStyles(align: PosAlign.center),
       ),
       PosColumn(
         text: 'Total',
         width: 3,
-        styles: const PosStyles(align: PosAlign.right, bold: true),
+        styles: const PosStyles(align: PosAlign.right),
       ),
     ]);
     bytes += generator.text(
@@ -102,7 +95,12 @@ class ReceiptFormatter {
           : '${item.quantity}';
 
       bytes += generator.row([
-        PosColumn(text: item.name, width: 4),
+        // Nama produk cetak tebal (bold) sesuai gambar
+        PosColumn(
+          text: item.name,
+          width: 5,
+          styles: const PosStyles(bold: true),
+        ),
         PosColumn(
           text: _formatCurrency(item.pricePerItem),
           width: 3,
@@ -110,7 +108,7 @@ class ReceiptFormatter {
         ),
         PosColumn(
           text: qtyStr,
-          width: 2,
+          width: 1,
           styles: const PosStyles(align: PosAlign.center),
         ),
         PosColumn(
@@ -129,10 +127,10 @@ class ReceiptFormatter {
 
       // Note
       if (item.note != null && item.note!.isNotEmpty) {
-        bytes += generator.text('  * ${item.note}');
+        bytes += generator.text('- ${item.note}');
       }
 
-      bytes += generator.feed(1);
+      bytes += generator.feed(1); // Jarak antar item
     }
 
     bytes += generator.text(
@@ -144,13 +142,13 @@ class ReceiptFormatter {
     bytes += generator.row([
       PosColumn(text: '', width: 5),
       PosColumn(
-        text: 'Total  :',
-        width: 4,
+        text: 'Total :',
+        width: 3,
         styles: const PosStyles(align: PosAlign.right),
       ),
       PosColumn(
         text: _formatCurrency(payload.grandTotal),
-        width: 3,
+        width: 4,
         styles: const PosStyles(align: PosAlign.right),
       ),
     ]);
@@ -161,12 +159,12 @@ class ReceiptFormatter {
         PosColumn(text: '', width: 5),
         PosColumn(
           text: 'Diskon :',
-          width: 4,
+          width: 3,
           styles: const PosStyles(align: PosAlign.right),
         ),
         PosColumn(
           text: '-${_formatCurrency(payload.discountAmount)}',
-          width: 3,
+          width: 4,
           styles: const PosStyles(align: PosAlign.right),
         ),
       ]);
@@ -175,13 +173,13 @@ class ReceiptFormatter {
     bytes += generator.row([
       PosColumn(text: '', width: 5),
       PosColumn(
-        text: 'Bayar  :',
-        width: 4,
+        text: 'Bayar :',
+        width: 3,
         styles: const PosStyles(align: PosAlign.right),
       ),
       PosColumn(
         text: _formatCurrency(payload.payAmount),
-        width: 3,
+        width: 4,
         styles: const PosStyles(align: PosAlign.right),
       ),
     ]);
@@ -189,26 +187,51 @@ class ReceiptFormatter {
     bytes += generator.feed(1);
 
     // ─── Payment Status ───
+    // Teks LUNAS dibuat membesar sesuai dengan foto struk
     final paymentStatus = payload.paymentStatus ?? 'LUNAS';
-    bytes += generator.text('Keterangan : $paymentStatus');
+    bytes += generator.row([
+      PosColumn(
+        text: 'Keterangan : ',
+        width: 5,
+        styles: const PosStyles(align: PosAlign.left),
+      ),
+      PosColumn(
+        text: paymentStatus,
+        width: 7,
+        styles: const PosStyles(
+          align: PosAlign.left,
+          bold: true,
+          height: PosTextSize.size2,
+          width: PosTextSize.size2,
+        ),
+      ),
+    ]);
 
     bytes += generator.feed(1);
 
     // ─── Footer ───
     bytes += generator.text(
       'TERIMA KASIH',
-      styles: const PosStyles(align: PosAlign.center, bold: true),
-    );
-    bytes += generator.text(
-      'Ekaprint Central',
       styles: const PosStyles(align: PosAlign.center),
     );
     bytes += generator.text(
-      'Jl. Hayam Wuruk, No. 185 A',
+      'Ekaprint Panjer',
       styles: const PosStyles(align: PosAlign.center),
     );
     bytes += generator.text(
-      'WA: 085337932762',
+      'Jl. Waturenggong No.64, Panjer,',
+      styles: const PosStyles(align: PosAlign.center),
+    );
+    bytes += generator.text(
+      'Kec. Denpasar Selatan',
+      styles: const PosStyles(align: PosAlign.center),
+    );
+    bytes += generator.text(
+      'Kota Denpasar, Bali 80113',
+      styles: const PosStyles(align: PosAlign.center),
+    );
+    bytes += generator.text(
+      'WA: 081246278452',
       styles: const PosStyles(align: PosAlign.center),
     );
 
@@ -218,11 +241,6 @@ class ReceiptFormatter {
     bytes += generator.text(
       '"Batas pengambilan orderan maksimum 3 bulan sejak nota dikeluarkan. Produk rusak akan diganti. Klaim kerusakan wajib disertai video unboxing (maks. 1x24 jam)."',
       styles: const PosStyles(align: PosAlign.left),
-    );
-
-    bytes += generator.text(
-      '================================',
-      styles: const PosStyles(align: PosAlign.center),
     );
 
     bytes += generator.feed(3);
