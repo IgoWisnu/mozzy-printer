@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-enum PrinterConnectionType { bluetooth, usb }
+enum PrinterConnectionType { bluetooth, usb, lan }
 
 class PrinterModel {
   final String id;

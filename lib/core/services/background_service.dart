@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
@@ -166,6 +167,27 @@ void onStart(ServiceInstance service) async {
       int successCount = 0;
       for (final pm in mappedPrinters) {
         try {
+          // Generate ESC/POS bytes
+          final area = job.printArea.toLowerCase();
+          final isCashier = area == 'cashier' || area == 'kasir';
+          final bytes = isCashier
+              ? await ReceiptFormatter.format(job.payload)
+              : await KitchenFormatter.format(job.payload);
+
+          if (pm.connectionType.toString().split('.').last == 'lan') {
+            try {
+              final socket = await Socket.connect(pm.address, 9100, timeout: const Duration(seconds: 5));
+              socket.add(bytes);
+              await socket.flush();
+              await socket.close();
+              successCount++;
+              debugPrint('✅ Printed to LAN printer ${pm.name} (${pm.address})');
+            } catch (e) {
+              debugPrint('❌ Print error to LAN printer ${pm.name}: $e');
+            }
+            continue;
+          }
+
           Printer device;
           bool needsFreshConnection = false;
 
@@ -194,13 +216,6 @@ void onStart(ServiceInstance service) async {
             }
             connectedDevices[pm.address] = device;
           }
-
-          // Generate ESC/POS bytes
-          final area = job.printArea.toLowerCase();
-          final isCashier = area == 'cashier' || area == 'kasir';
-          final bytes = isCashier
-              ? await ReceiptFormatter.format(job.payload)
-              : await KitchenFormatter.format(job.payload);
 
           // Print the bytes
           final printed = await thermalPrinterService.printBytes(device, bytes);

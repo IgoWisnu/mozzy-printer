@@ -16,6 +16,7 @@ class AddPrinterDialog extends StatefulWidget {
 
 class _AddPrinterDialogState extends State<AddPrinterDialog> {
   late TextEditingController _nameController;
+  late TextEditingController _ipController;
   String _printArea = 'kitchen';
   PrinterConnectionType _connectionType = PrinterConnectionType.bluetooth;
   Printer? _selectedDevice;
@@ -29,6 +30,11 @@ class _AddPrinterDialogState extends State<AddPrinterDialog> {
     _isEditing = widget.existingPrinter != null;
     _nameController = TextEditingController(
       text: widget.existingPrinter?.name ?? '',
+    );
+    _ipController = TextEditingController(
+      text: widget.existingPrinter?.connectionType == PrinterConnectionType.lan 
+          ? widget.existingPrinter?.address 
+          : '',
     );
 
     // Load print areas from settings
@@ -51,6 +57,7 @@ class _AddPrinterDialogState extends State<AddPrinterDialog> {
   @override
   void dispose() {
     _nameController.dispose();
+    _ipController.dispose();
     super.dispose();
   }
 
@@ -108,6 +115,11 @@ class _AddPrinterDialogState extends State<AddPrinterDialog> {
                   label: Text('USB'),
                   icon: Icon(Icons.usb),
                 ),
+                ButtonSegment(
+                  value: PrinterConnectionType.lan,
+                  label: Text('LAN'),
+                  icon: Icon(Icons.wifi),
+                ),
               ],
               selected: {_connectionType},
               onSelectionChanged: (val) {
@@ -120,7 +132,7 @@ class _AddPrinterDialogState extends State<AddPrinterDialog> {
             const SizedBox(height: 20),
 
             // Scan for devices
-            if (!_isEditing) ...[
+            if (!_isEditing && _connectionType != PrinterConnectionType.lan) ...[
               Consumer<PrinterProvider>(
                 builder: (_, prov, __) {
                   return Column(
@@ -227,8 +239,26 @@ class _AddPrinterDialogState extends State<AddPrinterDialog> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
+              onChanged: (_) => setState(() {}),
             ),
             const SizedBox(height: 16),
+
+            if (_connectionType == PrinterConnectionType.lan) ...[
+              TextField(
+                controller: _ipController,
+                decoration: InputDecoration(
+                  labelText: 'IP Address',
+                  hintText: 'e.g. 192.168.1.100',
+                  prefixIcon: const Icon(Icons.link),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 16),
+            ],
 
             // Print Area Dropdown
             DropdownButtonFormField<String>(
@@ -274,7 +304,8 @@ class _AddPrinterDialogState extends State<AddPrinterDialog> {
 
   bool _canSave() {
     if (_nameController.text.isEmpty) return false;
-    if (!_isEditing && _selectedDevice == null) return false;
+    if (_connectionType == PrinterConnectionType.lan && _ipController.text.isEmpty) return false;
+    if (!_isEditing && _connectionType != PrinterConnectionType.lan && _selectedDevice == null) return false;
     return true;
   }
 
@@ -284,6 +315,7 @@ class _AddPrinterDialogState extends State<AddPrinterDialog> {
     if (_isEditing) {
       final updated = widget.existingPrinter!.copyWith(
         name: _nameController.text.trim(),
+        address: _connectionType == PrinterConnectionType.lan ? _ipController.text.trim() : widget.existingPrinter!.address,
         printArea: _printArea,
         connectionType: _connectionType,
       );
@@ -291,7 +323,7 @@ class _AddPrinterDialogState extends State<AddPrinterDialog> {
     } else {
       await printerProv.addPrinter(
         name: _nameController.text.trim(),
-        address: _selectedDevice?.address ?? '',
+        address: _connectionType == PrinterConnectionType.lan ? _ipController.text.trim() : _selectedDevice?.address ?? '',
         printArea: _printArea,
         connectionType: _connectionType,
       );
