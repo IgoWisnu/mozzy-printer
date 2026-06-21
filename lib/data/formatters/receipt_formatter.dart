@@ -44,25 +44,6 @@ class ReceiptFormatter {
         height: PosTextSize.size2,
       ),
     );
-    bytes += generator.text(
-      'Queue: ${payload.queueNumber}',
-      styles: const PosStyles(bold: true, align: PosAlign.center),
-    );
-
-    final dineInLabel = payload.isDineIn
-        ? 'DINE IN'
-        : (payload.orderType ?? 'TAKE AWAY').toUpperCase();
-    bytes += generator.text(
-      dineInLabel,
-      styles: const PosStyles(align: PosAlign.center, bold: true),
-    );
-
-    if (payload.isDineIn && payload.table != null && payload.table != '-') {
-      bytes += generator.text(
-        'Table: ${payload.table}',
-        styles: const PosStyles(align: PosAlign.center),
-      );
-    }
     if (payload.customerName != null && payload.customerName!.isNotEmpty) {
       bytes += generator.text(
         'Customer: ${payload.customerName}',
@@ -179,6 +160,20 @@ class ReceiptFormatter {
         ),
       ]);
     }
+
+    final isPaid =
+        payload.paymentStatus?.toLowerCase() == 'paid' ||
+        payload.paymentStatus?.toLowerCase() == 'lunas' ||
+        payload.paymentStatus?.toLowerCase() == 'completed';
+    bytes += generator.row([
+      PosColumn(text: 'Status', width: 8),
+      PosColumn(
+        text: isPaid ? 'Lunas' : 'Belum Dibayar',
+        width: 4,
+        styles: const PosStyles(align: PosAlign.right, bold: true),
+      ),
+    ]);
+
     if (payload.payAmount > 0) {
       bytes += generator.row([
         PosColumn(text: 'Paid', width: 8),
@@ -215,6 +210,12 @@ class ReceiptFormatter {
     ]);
 
     bytes += generator.feed(1);
+    if (!isPaid) {
+      bytes += generator.text(
+        '** Harap membawa nota ini ketika mengambil pakaian',
+        styles: const PosStyles(align: PosAlign.center),
+      );
+    }
     bytes += generator.text(
       'Thank you!',
       styles: const PosStyles(align: PosAlign.center, bold: true),
